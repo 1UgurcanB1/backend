@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import os
 from contextlib import asynccontextmanager
 from datetime import datetime,timezone
 from threading import RLock
@@ -73,8 +74,16 @@ async def lifespan(app):
     try:await task
     except asyncio.CancelledError:pass
 
+ALLOWED_ORIGINS = [
+    origin.strip().rstrip('/')
+    for origin in os.getenv(
+        'ALLOWED_ORIGINS',
+        'https://demo.deneme1.blitz.cloud,http://localhost:3000,http://127.0.0.1:3000'
+    ).split(',') if origin.strip()
+]
+
 app=FastAPI(title='BIST 100 Paper Trading',lifespan=lifespan)
-app.add_middleware(CORSMiddleware,allow_origins=['http://localhost:3000','http://127.0.0.1:3000'],allow_methods=['GET','POST','PUT'],allow_headers=['Content-Type'])
+app.add_middleware(CORSMiddleware,allow_origins=ALLOWED_ORIGINS,allow_methods=['GET','POST','PUT'],allow_headers=['Content-Type'])
 
 class Buy(BaseModel):symbol:str=Field(min_length=2,max_length=15)
 class Reset(BaseModel):initial_balance:float=Field(100000,ge=1000,le=1e9)
@@ -171,7 +180,7 @@ async def optimization(req:OptimizationRequest):
     except (ValueError,KeyError) as exc:raise HTTPException(422,str(exc))
 @app.websocket('/ws/market')
 async def websocket(ws:WebSocket):
-    if ws.headers.get('origin') not in ('http://localhost:3000','http://127.0.0.1:3000',None):
+    if ws.headers.get('origin') is not None and ws.headers.get('origin') not in ALLOWED_ORIGINS:
         await ws.close(code=1008);return
     await ws.accept()
     try:
